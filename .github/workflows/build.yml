@@ -1,0 +1,132 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: Core/go.mod
+          cache-dependency-path: Core/go.sum
+      - name: Vet and test Core
+        working-directory: Core
+        run: |
+          go vet ./...
+          go test ./...
+
+      - name: Linux GUI build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev libxcursor-dev \
+            libxrandr-dev libxinerama-dev libxi-dev libxxf86vm-dev
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: GoApp/go.mod
+          cache-dependency-path: GoApp/go.sum
+      - name: Vet and test AtomicAWG
+        working-directory: GoApp
+        run: |
+          go vet ./...
+          go test ./...
+
+  build:
+    name: Build ${{ matrix.name }}
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS-arm64
+            os: macos-latest
+            goarch: arm64
+          - name: macOS-x64
+            os: macos-latest
+            goarch: x64
+          - name: Linux-x64
+            os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+          - name: Windows-x64
+            os: windows-latest
+            goos: windows
+            goarch: amd64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: GoApp/go.mod
+          cache-dependency-path: GoApp/go.sum
+
+      - name: Linux GUI build dependencies
+        if: matrix.goos == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev libxcursor-dev \
+            libxrandr-dev libxinerama-dev libxi-dev libxxf86vm-dev
+
+      # CGO (needed for the native GUI bindings) requires a C compiler; the
+      # runner's default PATH doesn't reliably expose one on Windows.
+      - name: Set up MinGW (Windows)
+        if: matrix.goos == 'windows'
+        uses: egor-tensin/setup-mingw@v2
+        with:
+          platform: x64
+
+      # macOS: produces a signed, menu-bar-only AtomicAWG.app bundle.
+      - name: Build macOS app bundle
+        if: runner.os == 'macOS'
+        working-directory: GoApp
+        run: ./Build-Mac.sh ${{ matrix.goarch }}
+
+      # Linux/Windows: no app-bundle packaging yet, just the binary.
+      - name: Build binary
+        if: runner.os != 'macOS'
+        working-directory: GoApp
+        shell: bash
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 1
+        run: |
+          mkdir -p dist
+          ext=""
+          if [ "$GOOS" = "windows" ]; then ext=".exe"; fi
+          go build -trimpath -ldflags "-X main.appVersion=${GITHUB_REF_NAME}" \
+            -o "dist/AtomicAWG-${{ matrix.name }}${ext}" .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AtomicAWG-${{ matrix.name }}
+          path: |
+            GoApp/dist/*.zip
+            GoApp/dist/AtomicAWG-*
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**
+          generate_release_notes: true

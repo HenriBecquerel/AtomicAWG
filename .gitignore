@@ -1,0 +1,11 @@
+# Build output
+GoApp/dist/
+Core/wireproxy
+Core/*.exe
+
+# OS/editor cruft
+.DS_Store
+*.swp
+
+# Go
+*.test
