@@ -32,10 +32,13 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev libxcursor-dev \
             libxrandr-dev libxinerama-dev libxi-dev libxxf86vm-dev
+      # Second setup-go in the same job: the Go toolchain/module cache was
+      # already restored above, so restoring it again would unpack the same
+      # archive over existing files ("Cannot open: File exists").
       - uses: actions/setup-go@v5
         with:
           go-version-file: GoApp/go.mod
-          cache-dependency-path: GoApp/go.sum
+          cache: false
       - name: Vet and test AtomicAWG
         working-directory: GoApp
         run: |
@@ -80,17 +83,28 @@ jobs:
 
       # CGO (needed for the native GUI bindings) requires a C compiler; the
       # runner's default PATH doesn't reliably expose one on Windows.
+      # Installed straight from Chocolatey: the setup-mingw action is
+      # unmaintained and fails against current mingw-w64 builds.
       - name: Set up MinGW (Windows)
         if: matrix.goos == 'windows'
-        uses: egor-tensin/setup-mingw@v2
-        with:
-          platform: x64
+        shell: pwsh
+        run: |
+          choco install mingw --no-progress -y
+          $bin = 'C:\ProgramData\mingw64\mingw64\bin'
+          if (-not (Test-Path (Join-Path $bin 'gcc.exe'))) {
+            $found = Get-ChildItem -Path 'C:\ProgramData' -Filter gcc.exe -Recurse -ErrorAction SilentlyContinue |
+              Select-Object -First 1
+            if (-not $found) { throw 'gcc.exe not found after installing mingw' }
+            $bin = $found.DirectoryName
+          }
+          $bin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          & (Join-Path $bin 'gcc.exe') --version
 
       # macOS: produces a signed, menu-bar-only AtomicAWG.app bundle.
       - name: Build macOS app bundle
         if: runner.os == 'macOS'
         working-directory: GoApp
-        run: ./Build-Mac.sh ${{ matrix.goarch }}
+        run: bash ./Build-Mac.sh ${{ matrix.goarch }}
 
       # Linux/Windows: no app-bundle packaging yet, just the binary.
       - name: Build binary
