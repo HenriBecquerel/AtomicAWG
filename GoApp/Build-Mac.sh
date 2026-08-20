@@ -5,7 +5,7 @@
 set -euo pipefail
 
 project_dir="$(cd "$(dirname "$0")" && pwd)"
-version="3.5.0"
+version="${APP_VERSION:-3.5.0}"
 requested_arch="${1:-arm64}"
 
 case "$requested_arch" in

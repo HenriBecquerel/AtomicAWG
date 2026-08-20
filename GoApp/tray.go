@@ -10,7 +10,7 @@ import (
 // own macOS client uses), and closing the window hides it rather than
 // quitting — the proxy keeps running until "Выход" is chosen explicitly.
 func (g *guiApp) setupTray(appIcon fyne.Resource) {
-	trayIcon := fyne.NewStaticResource("tray.svg", trayIconBytes)
+	trayIcon := trayIconResource(appIcon)
 
 	showItem := fyne.NewMenuItem("Открыть AtomicAWG", func() {
 		g.window.Show()
@@ -31,6 +31,7 @@ func (g *guiApp) setupTray(appIcon fyne.Resource) {
 	g.window.SetCloseIntercept(func() {
 		g.window.Hide()
 	})
+	installMinimizeToTray(g.window)
 }
 
 func (g *guiApp) updateTray(running bool) {

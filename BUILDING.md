@@ -64,12 +64,31 @@ go mod download
 # результат: dist/macos-<arch>/AtomicAWG.app и dist/AtomicAWG-macOS-<arch>.zip
 ```
 
-**Linux / Windows** — отдельного скрипта упаковки пока нет, достаточно
-обычной сборки бинарника:
+**Windows** — собирает `.exe` с флагом `-H=windowsgui` (без чёрного окна
+консоли) и иконкой (см. ниже):
+
+```powershell
+./Build-Windows.ps1
+# результат: dist/AtomicAWG.exe
+```
+
+**Linux** — отдельного скрипта упаковки пока нет, достаточно обычной сборки:
 
 ```sh
 go build -trimpath -ldflags "-X main.appVersion=dev" -o dist/AtomicAWG .
-# Windows: -o dist/AtomicAWG.exe
+```
+
+### Иконка exe (Windows)
+
+Значок встраивается через объектный файл `GoApp/rsrc_windows_amd64.syso`,
+который уже лежит в репозитории — линковщик Go подхватывает его
+автоматически, ничего дополнительно делать не нужно. Пересоздать его нужно
+только если меняется сама иконка (`assets/atomicawg.ico`):
+
+```sh
+go run github.com/tc-hib/go-winres@latest simply --icon assets/atomicawg.ico --manifest gui --out rsrc_windows
+mv rsrc_windows_windows_amd64.syso rsrc_windows_amd64.syso
+rm -f rsrc_windows_windows_386.syso
 ```
 
 Запуск без сборки (для разработки):

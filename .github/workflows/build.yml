@@ -32,9 +32,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev libxcursor-dev \
             libxrandr-dev libxinerama-dev libxi-dev libxxf86vm-dev
-      # Second setup-go in the same job: the Go toolchain/module cache was
-      # already restored above, so restoring it again would unpack the same
-      # archive over existing files ("Cannot open: File exists").
+      # Second setup-go in the same job: the module cache was already
+      # restored above, so restoring it again unpacks the same archive over
+      # existing files ("Cannot open: File exists").
       - uses: actions/setup-go@v5
         with:
           go-version-file: GoApp/go.mod
@@ -104,23 +104,39 @@ jobs:
       - name: Build macOS app bundle
         if: runner.os == 'macOS'
         working-directory: GoApp
+        env:
+          APP_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || 'dev' }}
         run: bash ./Build-Mac.sh ${{ matrix.goarch }}
 
-      # Linux/Windows: no app-bundle packaging yet, just the binary.
-      - name: Build binary
-        if: runner.os != 'macOS'
+      # Windows: windowsgui subsystem (no console window) + embedded icon,
+      # via the committed rsrc_windows_amd64.syso (see Build-Windows.ps1).
+      - name: Build Windows binary
+        if: runner.os == 'Windows'
+        working-directory: GoApp
+        shell: pwsh
+        env:
+          APP_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || 'dev' }}
+        run: ./Build-Windows.ps1
+      - name: Rename Windows binary
+        if: runner.os == 'Windows'
+        working-directory: GoApp
+        shell: bash
+        run: mv dist/AtomicAWG.exe "dist/AtomicAWG-${{ matrix.name }}.exe"
+
+      # Linux: no app-bundle packaging yet, just the binary. Same
+      # tag-or-"dev" version fallback as the macOS/Windows steps, so all
+      # four artifacts agree on what "dev" means on non-tag builds.
+      - name: Build Linux binary
+        if: matrix.goos == 'linux'
         working-directory: GoApp
         shell: bash
         env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: 1
+          APP_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || 'dev' }}
         run: |
           mkdir -p dist
-          ext=""
-          if [ "$GOOS" = "windows" ]; then ext=".exe"; fi
-          go build -trimpath -ldflags "-X main.appVersion=${GITHUB_REF_NAME}" \
-            -o "dist/AtomicAWG-${{ matrix.name }}${ext}" .
+          go build -trimpath -ldflags "-X main.appVersion=${APP_VERSION}" \
+            -o "dist/AtomicAWG-${{ matrix.name }}" .
 
       - uses: actions/upload-artifact@v4
         with:
